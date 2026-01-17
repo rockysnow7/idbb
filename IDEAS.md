@@ -47,6 +47,8 @@ the player may spend favors to use a demon power. the higher rorzagoth's goodwil
 - possession: give rorzagoth control of a particular player
     - good outcome: the player plays well for the expos (if an expos player, the player plays perfectly; if an opposing player, the player plays as bad as possible)
     - bad outcome: the player plays poorly for the expos (if an expos player, the player plays as bad as possible; if an opposing player, the player plays perfectly)
+    - (a perfect batter will bat .666)
+- i me mime: invisible walls are placed around all the opposing players, so they cannot move; they look like mimes/clowns
 
 ## between-game rituals
 

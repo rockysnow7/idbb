@@ -1,6 +1,6 @@
-mod baseball_game;
+mod baseball;
 
-use baseball_game::{BaseballGame, PlayerName};
+use baseball::{BaseballGame, StrikeZoneLocation};
 
 /// The overall phase of the game.
 enum SeasonPhase {
@@ -14,10 +14,6 @@ enum GamePhase {
     PostGame,
 }
 
-pub enum GameError {
-    InvalidAction,
-}
-
 pub enum Base {
     First,
     Second,
@@ -25,22 +21,17 @@ pub enum Base {
     Home,
 }
 
-pub enum StrikeZoneLocation {
-    In,
-    Out,
-}
-
 pub enum Ritual {
     Prayer,
-    BloodSacrifice(PlayerName),
+    BloodSacrifice(String),
     ContinueToNextGame,
 }
 
 /// An action that the player can take.
 pub enum Action {
     // pre-game actions
-    SetBattingOrder(Vec<PlayerName>),
-    SetStartingPitcher(PlayerName),
+    SetBattingOrder(Vec<String>),
+    SetStartingPitcher(String),
     StartGame,
 
     // in-game offensive actions
@@ -61,6 +52,8 @@ pub struct GameView {
     display_text: String,
     available_actions: Vec<Action>,
 }
+
+pub enum GameError {}
 
 pub struct Game {
     season_phase: SeasonPhase,
