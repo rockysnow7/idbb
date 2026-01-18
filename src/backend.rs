@@ -35,12 +35,12 @@ fn generate_name(
     name
 }
 
-fn generate_all_players(rng: &mut ThreadRng) -> HashMap<String, Player> {
+fn generate_players(num_players: usize, rng: &mut ThreadRng) -> HashMap<String, Player> {
     let first_names = get_first_names();
     let last_names = get_last_names();
 
     let mut all_players = HashMap::new();
-    for _ in 0..100 {
+    for _ in 0..num_players {
         let name = generate_name(&first_names, &last_names, rng);
         let player = Player {
             name: name.clone(),
@@ -52,6 +52,7 @@ fn generate_all_players(rng: &mut ThreadRng) -> HashMap<String, Player> {
     all_players
 }
 
+#[derive(Debug)]
 pub struct Game {
     current_game: Option<BaseballGame>,
     rng: ThreadRng,
@@ -61,23 +62,49 @@ impl Game {
     pub fn new() -> Self {
         let mut rng = rand::rng();
 
-        let all_players = generate_all_players(&mut rng);
-        println!("{:#?}", all_players);
+        let all_players = generate_players(100, &mut rng);
+        let mut all_names = all_players.keys().cloned().collect::<Vec<_>>();
 
-        // let home_team = Team {
-        //     name: "Montreal Expos".to_string(),
-        //     batting_order: 
-        // };
+        let home_batting_order = all_names.drain(..9).collect::<Vec<_>>();
+        let home_starting_pitcher = all_names.drain(..1).collect::<Vec<_>>()[0].clone();
+        let home_fielders = all_names.drain(..8).collect::<Vec<_>>();
+        let home_bullpen = all_names.drain(..9).collect::<Vec<_>>();
 
-        let current_game = None;
+        let home_team = Team {
+            name: "Montreal Expos".to_string(),
+            batting_order: home_batting_order.try_into().unwrap(),
+            starting_pitcher: home_starting_pitcher,
+            fielders: home_fielders.try_into().unwrap(),
+            bullpen: home_bullpen,
+        };
 
-        Self {
-            current_game,
-            rng,
-        }
+        let visiting_batting_order = all_names.drain(..9).collect::<Vec<_>>();
+        let visiting_starting_pitcher = all_names.drain(..1).collect::<Vec<_>>()[0].clone();
+        let visiting_fielders = all_names.drain(..8).collect::<Vec<_>>();
+        let visiting_bullpen = all_names.drain(..9).collect::<Vec<_>>();
+
+        let visiting_team = Team {
+            name: "New York Yankees".to_string(),
+            batting_order: visiting_batting_order.try_into().unwrap(),
+            starting_pitcher: visiting_starting_pitcher,
+            fielders: visiting_fielders.try_into().unwrap(),
+            bullpen: visiting_bullpen,
+        };
+
+        let current_game = Some(BaseballGame::new(all_players, home_team, visiting_team));
+
+        Self { current_game, rng }
     }
 
     pub fn next(&mut self) {
-        todo!()
+        let current_game = self.current_game.as_mut().unwrap();
+
+        let pitcher_name = if current_game.home_team_is_at_bat() {
+            current_game.home_team.starting_pitcher.clone()
+        } else {
+            current_game.visiting_team.starting_pitcher.clone()
+        };
+        let events_summary = current_game.simulate_pitch(&pitcher_name, None, None);
+        println!("{:#?}", events_summary);
     }
 }

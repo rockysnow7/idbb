@@ -49,14 +49,17 @@ pub struct Player {
     pub metrics: PlayerMetrics,
 }
 
+#[derive(Debug)]
 pub struct Team {
     pub name: String,
     pub batting_order: [String; 9],
     pub starting_pitcher: String,
     pub fielders: [String; 8], // does not include the pitcher
+    pub bullpen: Vec<String>,
 }
 
-struct HalfInning {
+#[derive(Debug, Clone)]
+pub struct HalfInning {
     number: u8,
     top: bool,
 }
@@ -70,7 +73,8 @@ impl HalfInning {
     }
 }
 
-struct Bases {
+#[derive(Debug, Clone)]
+pub struct Bases {
     first: Option<String>,
     second: Option<String>,
     third: Option<String>,
@@ -82,7 +86,8 @@ impl Bases {
     }
 }
 
-struct Count {
+#[derive(Debug, Clone)]
+pub struct Count {
     balls: u8,
     strikes: u8,
 }
@@ -93,6 +98,7 @@ impl Count {
     }
 }
 
+#[derive(Debug)]
 struct GameState {
     home_team_runs: u8,
     visiting_team_runs: u8,
@@ -121,19 +127,19 @@ impl GameState {
     }
 }
 
-#[derive(strum::EnumIter, Copy, Clone)]
+#[derive(strum::EnumIter, Copy, Clone, Debug)]
 pub enum StrikeZoneLocation {
     In,
     Out,
 }
 
-#[derive(strum::EnumIter, Copy, Clone)]
+#[derive(strum::EnumIter, Copy, Clone, Debug)]
 pub enum BatterDecision {
     Swing,
     Take,
 }
 
-#[derive(strum::EnumIter, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(strum::EnumIter, Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum FieldLocation {
     Close,
     Infield,
@@ -162,7 +168,7 @@ impl FieldLocation {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Base {
     Batting,
     First,
@@ -209,13 +215,14 @@ impl Base {
     }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct RunnerAdvancement {
     name: String,
     from_base: Base,
     to_base: Option<Base>, // if None, the runner is out
 }
 
+#[derive(Debug)]
 pub enum BattingOutcome {
     Strike,
     Ball,
@@ -224,6 +231,7 @@ pub enum BattingOutcome {
     },
 }
 
+#[derive(Debug)]
 pub enum AtBatOutcome {
     Strikeout,
     Walk,
@@ -234,13 +242,26 @@ pub enum AtBatOutcome {
     Out,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum GameOutcome {
     HomeTeamWins,
     VisitingTeamWins,
     Ongoing,
 }
 
+#[derive(Debug)]
+pub struct GameStateSummary {
+    pub home_team_runs: u8,
+    pub visiting_team_runs: u8,
+    pub half_inning: HalfInning,
+    pub bases: Bases,
+    pub outs: u8,
+    pub count: Count,
+    pub batter: String,
+    pub pitcher: String,
+}
+
+#[derive(Debug)]
 pub struct EventsSummary {
     pitch_location: StrikeZoneLocation,
     batter_decision: BatterDecision,
@@ -248,14 +269,16 @@ pub struct EventsSummary {
     at_bat_outcome: Option<AtBatOutcome>,
     runner_advancements: Vec<RunnerAdvancement>,
     game_outcome: GameOutcome,
+    new_state: GameStateSummary,
 }
 
+#[derive(Debug)]
 pub struct BaseballGame {
     rng: ThreadRng,
-    state: GameState,
+    pub state: GameState,
     all_players: HashMap<String, Player>,
-    home_team: Team,
-    visiting_team: Team,
+    pub home_team: Team,
+    pub visiting_team: Team,
 }
 
 impl BaseballGame {
@@ -267,6 +290,10 @@ impl BaseballGame {
             home_team,
             visiting_team,
         }
+    }
+
+    pub fn home_team_is_at_bat(&self) -> bool {
+        !self.state.half_inning.top
     }
 
     fn walk_advancements(&self, batter_name: &String) -> Vec<RunnerAdvancement> {
@@ -596,6 +623,16 @@ impl BaseballGame {
                         at_bat_outcome: Some(at_bat_outcome),
                         runner_advancements,
                         game_outcome: GameOutcome::Ongoing,
+                        new_state: GameStateSummary {
+                            home_team_runs: self.state.home_team_runs,
+                            visiting_team_runs: self.state.visiting_team_runs,
+                            half_inning: self.state.half_inning.clone(),
+                            bases: self.state.bases.clone(),
+                            outs: self.state.outs,
+                            count: self.state.count.clone(),
+                            batter: batter_name.clone(),
+                            pitcher: pitcher_name.clone(),
+                        },
                     }
                 } else { // swing and miss
                     self.state.count.strikes += 1;
@@ -607,6 +644,16 @@ impl BaseballGame {
                         at_bat_outcome: None,
                         runner_advancements: Vec::new(),
                         game_outcome: GameOutcome::Ongoing,
+                        new_state: GameStateSummary {
+                            home_team_runs: self.state.home_team_runs,
+                            visiting_team_runs: self.state.visiting_team_runs,
+                            half_inning: self.state.half_inning.clone(),
+                            bases: self.state.bases.clone(),
+                            outs: self.state.outs,
+                            count: self.state.count.clone(),
+                            batter: batter_name.clone(),
+                            pitcher: pitcher_name.clone(),
+                        },
                     }
                 }
             },
@@ -620,6 +667,16 @@ impl BaseballGame {
                     at_bat_outcome: None,
                     runner_advancements: Vec::new(),
                     game_outcome: GameOutcome::Ongoing,
+                    new_state: GameStateSummary {
+                        home_team_runs: self.state.home_team_runs,
+                        visiting_team_runs: self.state.visiting_team_runs,
+                        half_inning: self.state.half_inning.clone(),
+                        bases: self.state.bases.clone(),
+                        outs: self.state.outs,
+                        count: self.state.count.clone(),
+                        batter: batter_name.clone(),
+                        pitcher: pitcher_name.clone(),
+                    },
                 }
             },
             (StrikeZoneLocation::Out, BatterDecision::Take) => {
@@ -632,6 +689,16 @@ impl BaseballGame {
                     at_bat_outcome: None,
                     runner_advancements: Vec::new(),
                     game_outcome: GameOutcome::Ongoing,
+                    new_state: GameStateSummary {
+                        home_team_runs: self.state.home_team_runs,
+                        visiting_team_runs: self.state.visiting_team_runs,
+                        half_inning: self.state.half_inning.clone(),
+                        bases: self.state.bases.clone(),
+                        outs: self.state.outs,
+                        count: self.state.count.clone(),
+                        batter: batter_name.clone(),
+                        pitcher: pitcher_name.clone(),
+                    },
                 }
             },
         };
@@ -659,6 +726,23 @@ impl BaseballGame {
 
         self.state.game_outcome = self.game_outcome();
         events_summary.game_outcome = self.state.game_outcome.clone();
+
+        // update the new state after any changes
+        let batter_name = if self.state.half_inning.top {
+            self.visiting_team.batting_order[self.state.visiting_team_batter_index].clone()
+        } else {
+            self.home_team.batting_order[self.state.home_team_batter_index].clone()
+        };
+        events_summary.new_state = GameStateSummary {
+            home_team_runs: self.state.home_team_runs,
+            visiting_team_runs: self.state.visiting_team_runs,
+            half_inning: self.state.half_inning.clone(),
+            bases: self.state.bases.clone(),
+            outs: self.state.outs,
+            count: self.state.count.clone(),
+            batter: batter_name,
+            pitcher: pitcher_name.clone(),
+        };
 
         events_summary
     }
