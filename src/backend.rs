@@ -1,6 +1,7 @@
 mod baseball;
 
-use baseball::{BaseballGame, Player, PlayerMetrics, Team};
+use baseball::{BaseballGame, GameOutcome, Player, PlayerMetrics, Team};
+use prompted::input;
 use rand::prelude::*;
 use std::collections::HashMap;
 
@@ -73,7 +74,7 @@ impl Game {
         let home_team = Team {
             name: "Montreal Expos".to_string(),
             batting_order: home_batting_order.try_into().unwrap(),
-            starting_pitcher: home_starting_pitcher,
+            current_pitcher: home_starting_pitcher,
             fielders: home_fielders.try_into().unwrap(),
             bullpen: home_bullpen,
         };
@@ -86,7 +87,7 @@ impl Game {
         let visiting_team = Team {
             name: "New York Yankees".to_string(),
             batting_order: visiting_batting_order.try_into().unwrap(),
-            starting_pitcher: visiting_starting_pitcher,
+            current_pitcher: visiting_starting_pitcher,
             fielders: visiting_fielders.try_into().unwrap(),
             bullpen: visiting_bullpen,
         };
@@ -99,12 +100,17 @@ impl Game {
     pub fn next(&mut self) {
         let current_game = self.current_game.as_mut().unwrap();
 
-        let pitcher_name = if current_game.home_team_is_at_bat() {
-            current_game.home_team.starting_pitcher.clone()
-        } else {
-            current_game.visiting_team.starting_pitcher.clone()
-        };
-        let events_summary = current_game.simulate_pitch(&pitcher_name, None, None);
+        let events_summary = current_game.simulate_pitch(None, None);
         println!("{:#?}", events_summary);
+
+        let state_summary = current_game.state_summary();
+        println!("{:#?}\n", state_summary);
+    }
+
+    pub fn run(&mut self) {
+        while self.current_game.as_ref().unwrap().state.game_outcome == GameOutcome::Ongoing {
+            self.next();
+            input!("Press Enter to continue...");
+        }
     }
 }
