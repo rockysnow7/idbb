@@ -405,9 +405,15 @@ impl BaseballGame {
             let runner_skill: f64 = self.all_players.get(&runner).unwrap().metrics.running.into();
             let success_prob = runner_skill / (runner_skill + mean_fielder_skill);
 
-            let upper_bound = match runner_advancements.iter().max_by_key(|advancement| advancement.to_base).unwrap().to_base {
-                Some(Base::Home) => 2,
-                _ => 0,
+            let upper_bound = {
+                let min_advancement = runner_advancements.iter().min_by_key(|advancement| advancement.to_base);
+                match min_advancement {
+                    None => 2,
+                    Some(advancement) => match advancement.to_base {
+                        Some(Base::Home) => 2,
+                        _ => 0,
+                    },
+                }
             };
             let mut bases = 0;
             for _ in 0..=upper_bound {
@@ -433,10 +439,16 @@ impl BaseballGame {
             let runner_skill: f64 = self.all_players.get(&runner).unwrap().metrics.running.into();
             let success_prob = runner_skill / (runner_skill + mean_fielder_skill);
 
-            let upper_bound = match runner_advancements.iter().max_by_key(|advancement| advancement.to_base).unwrap().to_base {
-                Some(Base::Home) => 3,
-                Some(Base::Third) => 1,
-                _ => 0,
+            let upper_bound = {
+                let min_advancement = runner_advancements.iter().min_by_key(|advancement| advancement.to_base);
+                match min_advancement {
+                    None => 3,
+                    Some(advancement) => match advancement.to_base {
+                        Some(Base::Home) => 3,
+                        Some(Base::Third) => 1,
+                        _ => 0,
+                    },
+                }
             };
             let mut bases = 0;
             for _ in 0..=upper_bound {
@@ -463,13 +475,18 @@ impl BaseballGame {
         let batter_running_skill: f64 = self.all_players.get(batter_name).unwrap().metrics.running.into();
         let batter_advance_prob = batter_running_skill / (batter_running_skill + mean_fielder_skill);
 
-        let upper_bound = match runner_advancements.iter().max_by_key(|advancement| advancement.to_base).unwrap().to_base {
-            Some(Base::Home) => 4,
-            Some(Base::Third) => 2,
-            Some(Base::Second) => 1,
-            _ => 0,
+        let upper_bound = {
+            let min_advancement = runner_advancements.iter().min_by_key(|advancement| advancement.to_base);
+            match min_advancement {
+                None => 4,
+                Some(advancement) => match advancement.to_base {
+                    Some(Base::Home) => 4,
+                    Some(Base::Third) => 2,
+                    Some(Base::Second) => 1,
+                    _ => 0,
+                },
+            }
         };
-
         let mut batter_bases = 0;
         for _ in 0..=upper_bound {
             if self.rng.random_bool(batter_advance_prob) {
