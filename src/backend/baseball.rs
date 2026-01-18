@@ -37,9 +37,9 @@ pub struct Player {
 
 pub struct Team {
     name: String,
-    batting_order: Vec<String>,
+    batting_order: [String; 9],
     starting_pitcher: String,
-    fielders: Vec<String>,
+    fielders: [String; 8], // does not include the pitcher
 }
 
 struct HalfInning {
@@ -87,6 +87,8 @@ struct GameState {
     outs: u8,
     count: Count,
     game_outcome: GameOutcome,
+    home_team_batter_index: usize,
+    visiting_team_batter_index: usize,
 }
 
 impl GameState {
@@ -99,6 +101,8 @@ impl GameState {
             outs: 0,
             count: Count::empty(),
             game_outcome: GameOutcome::Ongoing,
+            home_team_batter_index: 0,
+            visiting_team_batter_index: 0,
         }
     }
 }
@@ -191,6 +195,7 @@ impl Base {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub struct RunnerAdvancement {
     name: String,
     from_base: Base,
@@ -282,12 +287,12 @@ impl BaseballGame {
         runner_advancements
     }
 
-    fn apply_runner_advancements(&mut self, runner_advancements: &Vec<RunnerAdvancement>) {
-        let mut runner_advancements_sorted = Vec::new();
-        while runner_advancements_sorted.len() < runner_advancements.len() {
-            let advancement = runner_advancements.iter().max_by_key(|advancement| advancement.from_base);
-            runner_advancements_sorted.push(advancement.unwrap());
+    fn apply_runner_advancements(&mut self, runner_advancements: &mut Vec<RunnerAdvancement>) {
+        if runner_advancements.is_empty() {
+            return;
         }
+        let mut runner_advancements_sorted = runner_advancements.clone();
+        runner_advancements_sorted.sort_by_key(|advancement| advancement.from_base);
 
         for advancement in runner_advancements_sorted {
             match advancement.to_base {
@@ -306,7 +311,11 @@ impl BaseballGame {
             }
 
             match advancement.from_base {
-                Base::Batting => (),
+                Base::Batting => if self.state.half_inning.top {
+                    self.state.visiting_team_batter_index = (self.state.visiting_team_batter_index + 1) % 9;
+                } else {
+                    self.state.home_team_batter_index = (self.state.home_team_batter_index + 1) % 9;
+                },
                 Base::First => self.state.bases.first = None,
                 Base::Second => self.state.bases.second = None,
                 Base::Third => self.state.bases.third = None,
@@ -316,8 +325,10 @@ impl BaseballGame {
     }
 
     fn game_outcome(&self) -> GameOutcome {
-        if self.state.half_inning.number <= 9 {
+        if self.state.half_inning.number < 9 {
             GameOutcome::Ongoing
+        } else if self.state.half_inning.number == 9 && !self.state.half_inning.top && self.state.home_team_runs > self.state.visiting_team_runs {
+            GameOutcome::HomeTeamWins
         } else if self.state.home_team_runs > self.state.visiting_team_runs {
             GameOutcome::HomeTeamWins
         } else if self.state.home_team_runs < self.state.visiting_team_runs {
@@ -363,7 +374,7 @@ impl BaseballGame {
                 });
             }
 
-            self.apply_runner_advancements(&runner_advancements);
+            self.apply_runner_advancements(&mut runner_advancements);
 
             return (AtBatOutcome::HomeRun, runner_advancements);
         }
@@ -514,15 +525,21 @@ impl BaseballGame {
             _ => unreachable!(),
         };
 
-        self.apply_runner_advancements(&runner_advancements);
+        self.apply_runner_advancements(&mut runner_advancements);
 
         (at_bat_outcome, runner_advancements)
+    }
+
+    fn cycle_half_inning(&mut self) {
+        self.state.half_inning = self.state.half_inning.next();
+        self.state.bases = Bases::empty();
+        self.state.outs = 0;
+        self.state.count = Count::empty();
     }
 
     pub fn simulate_pitch(
         &mut self,
         pitcher_name: &String,
-        batter_name: &String,
         pitch_aim_location: Option<StrikeZoneLocation>, // if Some, the pitcher will aim for the given location; if None, the pitcher will throw a random pitch
         batter_decision: Option<BatterDecision>, // if Some, the batter will follow the given swing decision; if None, the batter will decide to swing/take/bunt randomly
     ) -> EventsSummary {
@@ -543,14 +560,20 @@ impl BaseballGame {
             (StrikeZoneLocation::Out, false) => StrikeZoneLocation::In,
         };
 
+        let batter_name = if self.state.half_inning.top {
+            self.visiting_team.batting_order[self.state.visiting_team_batter_index].clone()
+        } else {
+            self.home_team.batting_order[self.state.home_team_batter_index].clone()
+        };
+
         let batter_decision = batter_decision.unwrap_or(BatterDecision::iter().choose(&mut self.rng).unwrap());
-        let batter_skill: f64 = self.all_players.get(batter_name).unwrap().metrics.hitting.into();
+        let batter_skill: f64 = self.all_players.get(&batter_name).unwrap().metrics.hitting.into();
         let mut events_summary = match (pitch_location, batter_decision) {
             (_, BatterDecision::Swing) => {
                 let contact = self.rng.random_bool(batter_skill);
                 if contact { // swing and contact
                     let field_location = FieldLocation::Close.random_from_skill(&mut self.rng, batter_skill);
-                    let (at_bat_outcome, runner_advancements) = self.simulate_fielding_and_running(batter_name, field_location);
+                    let (at_bat_outcome, runner_advancements) = self.simulate_fielding_and_running(&batter_name, field_location);
 
                     EventsSummary {
                         pitch_location,
@@ -602,15 +625,22 @@ impl BaseballGame {
         if self.state.count.strikes == 3 {
             self.state.outs += 1;
             events_summary.at_bat_outcome = Some(AtBatOutcome::Strikeout);
+
+            if self.state.half_inning.top {
+                self.state.visiting_team_batter_index = (self.state.visiting_team_batter_index + 1) % 9;
+            } else {
+                self.state.home_team_batter_index = (self.state.home_team_batter_index + 1) % 9;
+            }
         } else if self.state.count.balls == 4 {
             events_summary.at_bat_outcome = Some(AtBatOutcome::Walk);
-            let walk_advancements = self.walk_advancements(batter_name);
-            self.apply_runner_advancements(&walk_advancements);
+            let mut walk_advancements = self.walk_advancements(&batter_name);
+            self.apply_runner_advancements(&mut walk_advancements); // this also cycles the batter
             events_summary.runner_advancements = walk_advancements;
         }
 
-        if self.state.outs == 3 {
-            self.state.half_inning = self.state.half_inning.next();
+        // handle end of half-inning
+        if self.state.outs >= 3 {
+            self.cycle_half_inning();
         }
 
         self.state.game_outcome = self.game_outcome();
