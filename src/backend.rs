@@ -1,91 +1,83 @@
 mod baseball;
 
-use baseball::{BaseballGame, StrikeZoneLocation};
+use baseball::{BaseballGame, Player, PlayerMetrics, Team};
+use rand::prelude::*;
+use std::collections::HashMap;
 
-/// The overall phase of the game.
-enum SeasonPhase {
-    RegularSeason(u8),
+const FIRST_NAMES: &str = include_str!("data/first_names.txt");
+const LAST_NAMES: &str = include_str!("data/last_names.txt");
+
+fn get_first_names() -> Vec<&'static str> {
+    FIRST_NAMES.lines().collect()
 }
 
-/// The phase of the current baseball game.
-enum GamePhase {
-    PreGame,
-    InGame,
-    PostGame,
+fn get_last_names() -> Vec<&'static str> {
+    LAST_NAMES.lines().collect()
 }
 
-pub enum Base {
-    First,
-    Second,
-    Third,
-    Home,
+fn generate_name(
+    first_names: &[&'static str],
+    last_names: &[&'static str],
+    rng: &mut ThreadRng,
+) -> String {
+    let first_name = first_names.choose(rng).unwrap();
+    let last_name = last_names.choose(rng).unwrap();
+    let mut name = format!("{} {}", first_name, last_name);
+
+    if rng.random_bool(0.05) {
+        name = format!("{name} Jr.");
+    } else if rng.random_bool(0.03) {
+        name = format!("{name} III");
+    } else if rng.random_bool(0.02) {
+        name = format!("{name} Sr.");
+    }
+
+    name
 }
 
-pub enum Ritual {
-    Prayer,
-    BloodSacrifice(String),
-    ContinueToNextGame,
+fn generate_all_players(rng: &mut ThreadRng) -> HashMap<String, Player> {
+    let first_names = get_first_names();
+    let last_names = get_last_names();
+
+    let mut all_players = HashMap::new();
+    for _ in 0..100 {
+        let name = generate_name(&first_names, &last_names, rng);
+        let player = Player {
+            name: name.clone(),
+            metrics: PlayerMetrics::random(rng),
+        };
+        all_players.insert(name, player);
+    }
+
+    all_players
 }
-
-/// An action that the player can take.
-pub enum Action {
-    // pre-game actions
-    SetBattingOrder(Vec<String>),
-    SetStartingPitcher(String),
-    StartGame,
-
-    // in-game offensive actions
-    ChooseSwing,
-    ChooseBunt,
-    ChooseTake,
-    // AttemptSteal(Base), // should not be able to steal first base
-
-    // in-game defensive actions
-    ChoosePitchAimLocation(StrikeZoneLocation),
-
-    // post-game actions
-    PerformRitual(Ritual),
-}
-
-/// Data to be sent to the frontend.
-pub struct GameView {
-    display_text: String,
-    available_actions: Vec<Action>,
-}
-
-pub enum GameError {}
 
 pub struct Game {
-    season_phase: SeasonPhase,
-    game_phase: GamePhase,
     current_game: Option<BaseballGame>,
+    rng: ThreadRng,
 }
 
 impl Game {
     pub fn new() -> Self {
+        let mut rng = rand::rng();
+
+        let all_players = generate_all_players(&mut rng);
+        println!("{:#?}", all_players);
+
+        // let home_team = Team {
+        //     name: "Montreal Expos".to_string(),
+        //     batting_order: 
+        // };
+
+        let current_game = None;
+
         Self {
-            season_phase: SeasonPhase::RegularSeason(0),
-            game_phase: GamePhase::PreGame,
-            current_game: None,
+            current_game,
+            rng,
         }
     }
 
-    pub fn get_view(&self) -> GameView {
-        GameView {
-            display_text: self.get_display_text(),
-            available_actions: self.get_available_actions(),
-        }
-    }
-
-    fn get_display_text(&self) -> String {
-        todo!()
-    }
-
-    fn get_available_actions(&self) -> Vec<Action> {
-        todo!()
-    }
-
-    pub fn process_action(&mut self, action: Action) -> Result<GameView, GameError> {
+    pub fn next(&mut self) {
         todo!()
     }
 }

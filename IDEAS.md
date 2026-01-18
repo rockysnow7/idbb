@@ -35,15 +35,12 @@ defensive choices:
 
 the player may spend favors to use a demon power. the higher rorzagoth's goodwill, the greater the chance that the power will lead to a positive outcome for the expos.
 
-- ?: summon a portal to move the ball mid-flight
+- portal: summon a portal to move the ball mid-flight
     - good outcome: the ball is moved to a more advantageous position
     - bad outcome: the ball is moved to a more disadvantageous position
 - mirrorball: the batter sees many copies of the ball flying towards him and must choose which one to hit
     - good outcome: the opposing batter strikes out
     - bad outcome: the opposing batter hits a home run
-- time warp: try to rewind to the start of the half-inning
-    - good outcome: rewinds to the start of the half-inning
-    - bad outcome: skips to the end of the half-inning, with a bad outcome for the expos
 - possession: give rorzagoth control of a particular player
     - good outcome: the player plays well for the expos (if an expos player, the player plays perfectly; if an opposing player, the player plays as bad as possible)
     - bad outcome: the player plays poorly for the expos (if an expos player, the player plays as bad as possible; if an opposing player, the player plays perfectly)

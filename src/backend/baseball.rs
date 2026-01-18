@@ -2,7 +2,7 @@ use rand::prelude::*;
 use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum SkillLevel {
     VeryHigh,
     High,
@@ -23,6 +23,7 @@ impl Into<f64> for SkillLevel {
     }
 }
 
+#[derive(Debug)]
 pub struct PlayerMetrics {
     hitting: SkillLevel,
     running: SkillLevel,
@@ -30,16 +31,29 @@ pub struct PlayerMetrics {
     pitching: SkillLevel,
 }
 
+impl PlayerMetrics {
+    pub fn random(rng: &mut ThreadRng) -> Self {
+        let allowed_levels = [SkillLevel::High, SkillLevel::Medium, SkillLevel::Low];
+        let hitting = *allowed_levels.choose(rng).unwrap();
+        let running = *allowed_levels.choose(rng).unwrap();
+        let fielding = *allowed_levels.choose(rng).unwrap();
+        let pitching = *allowed_levels.choose(rng).unwrap();
+
+        Self { hitting, running, fielding, pitching }
+    }
+}
+
+#[derive(Debug)]
 pub struct Player {
-    name: String,
-    metrics: PlayerMetrics,
+    pub name: String,
+    pub metrics: PlayerMetrics,
 }
 
 pub struct Team {
-    name: String,
-    batting_order: [String; 9],
-    starting_pitcher: String,
-    fielders: [String; 8], // does not include the pitcher
+    pub name: String,
+    pub batting_order: [String; 9],
+    pub starting_pitcher: String,
+    pub fielders: [String; 8], // does not include the pitcher
 }
 
 struct HalfInning {
