@@ -110,7 +110,7 @@ impl Game {
     pub fn run(&mut self) {
         while self.current_game.as_ref().unwrap().state.game_outcome == GameOutcome::Ongoing {
             self.next();
-            input!("Press Enter to continue...");
+            // input!("Press Enter to continue...");
         }
     }
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 
 #[derive(Copy, Clone, Debug)]
-pub enum SkillLevel {
+pub enum Level {
     VeryHigh,
     High,
     Medium,
@@ -11,29 +11,29 @@ pub enum SkillLevel {
     VeryLow,
 }
 
-impl Into<f64> for SkillLevel {
+impl Into<f64> for Level {
     fn into(self) -> f64 {
         match self {
-            SkillLevel::VeryHigh => 1.0,
-            SkillLevel::High => 0.75,
-            SkillLevel::Medium => 0.5,
-            SkillLevel::Low => 0.25,
-            SkillLevel::VeryLow => 0.0,
+            Level::VeryHigh => 1.0,
+            Level::High => 0.75,
+            Level::Medium => 0.5,
+            Level::Low => 0.25,
+            Level::VeryLow => 0.0,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct PlayerMetrics {
-    hitting: SkillLevel,
-    running: SkillLevel,
-    fielding: SkillLevel,
-    pitching: SkillLevel,
+    hitting: Level,
+    running: Level,
+    fielding: Level,
+    pitching: Level,
 }
 
 impl PlayerMetrics {
     pub fn random(rng: &mut ThreadRng) -> Self {
-        let allowed_levels = [SkillLevel::High, SkillLevel::Medium, SkillLevel::Low];
+        let allowed_levels = [Level::High, Level::Medium, Level::Low];
         let hitting = *allowed_levels.choose(rng).unwrap();
         let running = *allowed_levels.choose(rng).unwrap();
         let fielding = *allowed_levels.choose(rng).unwrap();
@@ -103,6 +103,7 @@ pub struct GameState {
     home_team_runs: u8,
     visiting_team_runs: u8,
     half_inning: HalfInning,
+    last_inning_just_ended: bool,
     bases: Bases,
     outs: u8,
     count: Count,
@@ -117,6 +118,7 @@ impl GameState {
             home_team_runs: 0,
             visiting_team_runs: 0,
             half_inning: HalfInning { number: 1, top: true },
+            last_inning_just_ended: false,
             bases: Bases::empty(),
             outs: 0,
             count: Count::empty(),
@@ -271,6 +273,37 @@ pub struct EventsSummary {
     game_outcome: GameOutcome,
 }
 
+fn random_advancement_between(from_base: Base, to_base: Base, success_prob: f64, rng: &mut ThreadRng) -> Option<Base> {
+    let max_bases = match (from_base, to_base) {
+        (Base::Batting, Base::First) => 1,
+        (Base::Batting, Base::Second) => 2,
+        (Base::Batting, Base::Third) => 3,
+        (Base::Batting, Base::Home) => 4,
+        (Base::First, Base::Second) => 1,
+        (Base::First, Base::Third) => 2,
+        (Base::First, Base::Home) => 3,
+        (Base::Second, Base::Third) => 1,
+        (Base::Second, Base::Home) => 2,
+        (Base::Third, Base::Home) => 1,
+        _ => unreachable!(),
+    };
+
+    let mut bases = 0;
+    for _ in 0..=max_bases {
+        if rng.random_bool(success_prob) {
+            bases += 1;
+        } else {
+            break;
+        }
+    }
+
+    if bases > 0 {
+        Some(from_base.plus(bases).unwrap())
+    } else {
+        None
+    }
+}
+
 #[derive(Debug)]
 pub struct BaseballGame {
     rng: ThreadRng,
@@ -365,25 +398,24 @@ impl BaseballGame {
     }
 
     fn game_outcome(&self) -> GameOutcome {
+        // first 8 innings
         if self.state.half_inning.number < 9 {
-            GameOutcome::Ongoing
-        } else if self.state.half_inning.number == 9 && !self.state.half_inning.top && self.state.home_team_runs > self.state.visiting_team_runs {
-            GameOutcome::HomeTeamWins
-        } else if self.state.home_team_runs > self.state.visiting_team_runs {
-            GameOutcome::HomeTeamWins
-        } else if self.state.home_team_runs < self.state.visiting_team_runs {
-            GameOutcome::VisitingTeamWins
-        } else {
-            GameOutcome::Ongoing
+            return GameOutcome::Ongoing;
         }
+        // walk-offs
+        if self.state.half_inning.number == 9 && !self.state.half_inning.top {
+            if self.state.home_team_runs > self.state.visiting_team_runs {
+                return GameOutcome::HomeTeamWins;
+            }
+        }
+        // extra innings
+        if self.state.half_inning.number > 9 && self.state.half_inning.top && self.state.visiting_team_runs > self.state.home_team_runs && self.state.last_inning_just_ended {
+            return GameOutcome::VisitingTeamWins;
+        }
+        GameOutcome::Ongoing
     }
 
     fn simulate_fielding_and_running(&mut self, batter_name: &String, field_location: FieldLocation) -> (AtBatOutcome, Vec<RunnerAdvancement>) {
-        // 1. determine how far the batter gets, if at all
-        // 2. determine how far the runners get, if at all
-        // 3. apply the transitions to the game state
-        // 4. return the at-bat outcome and runner advancements
-
         // handle home run
         if let FieldLocation::OutOfPark = field_location {
             let mut runner_advancements = Vec::new();
@@ -419,150 +451,166 @@ impl BaseballGame {
             return (AtBatOutcome::HomeRun, runner_advancements);
         }
 
-        // handle runners advancing
-        let mut runner_advancements = Vec::new();
+        let first_forced = self.state.bases.first.is_some();
+        let second_forced = self.state.bases.first.is_some() && self.state.bases.second.is_some();
+        let third_forced = self.state.bases.first.is_some() && self.state.bases.second.is_some() && self.state.bases.third.is_some();
 
+        let distance_difficulty: f64 = match field_location {
+            FieldLocation::Close => Level::High,
+            FieldLocation::Infield => Level::Medium,
+            FieldLocation::Outfield => Level::Low,
+            FieldLocation::OutOfPark => unreachable!(),
+        }.into();
         let mean_fielder_skill = self.visiting_team.fielders.iter().map(|fielder| {
             let fielder_skill: f64 = self.all_players.get(fielder).unwrap().metrics.fielding.into();
             fielder_skill
         }).sum::<f64>() / self.visiting_team.fielders.len() as f64;
+        let overall_difficulty = distance_difficulty + mean_fielder_skill;
 
+        let mut runner_advancements = Vec::new();
+        let mut furthest_occupied = Base::Home;
+
+        // advance runners
         if let Some(runner) = self.state.bases.third.clone() {
             let runner_skill: f64 = self.all_players.get(&runner).unwrap().metrics.running.into();
-            let success_prob = runner_skill / (runner_skill + mean_fielder_skill);
+            let success_prob = runner_skill / (runner_skill + overall_difficulty);
 
-            let mut bases = 0;
-            for _ in 0..=1 {
+            if third_forced { // runner is forced to advance
                 if self.rng.random_bool(success_prob) {
-                    bases += 1;
-                } else {
-                    break;
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::Third,
+                        to_base: Some(Base::Home),
+                    });
+                } else { // force out
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::Third,
+                        to_base: None,
+                    });
+                    furthest_occupied = Base::Third;
                 }
-            }
-
-            let to_base = if bases > 0 {
-                Some(Base::Third.plus(bases).unwrap())
+            } else if success_prob >= 0.5 { // runner may choose to advance if success probability is high enough
+                if self.rng.random_bool(success_prob) {
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::Third,
+                        to_base: Some(Base::Home),
+                    });
+                } else {
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::Third,
+                        to_base: None,
+                    });
+                    furthest_occupied = Base::Third;
+                }
             } else {
-                None
-            };
-
-            runner_advancements.push(RunnerAdvancement {
-                name: runner,
-                from_base: Base::Third,
-                to_base,
-            });
+                furthest_occupied = Base::Third;
+            }
         }
+
         if let Some(runner) = self.state.bases.second.clone() {
-            let runner_skill: f64 = self.all_players.get(&runner).unwrap().metrics.running.into();
-            let success_prob = runner_skill / (runner_skill + mean_fielder_skill);
-
-            let upper_bound = {
-                let min_advancement = runner_advancements.iter().min_by_key(|advancement| advancement.to_base);
-                match min_advancement {
-                    None => 2,
-                    Some(advancement) => match advancement.to_base {
-                        Some(Base::Home) => 2,
-                        _ => 0,
-                    },
+            let target_base = furthest_occupied.prev().unwrap();
+            if target_base <= Base::Second { // no room to advance
+                if second_forced { // force out
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::Second,
+                        to_base: None,
+                    });
                 }
-            };
-            let mut bases = 0;
-            for _ in 0..=upper_bound {
-                if self.rng.random_bool(success_prob) {
-                    bases += 1;
+                furthest_occupied = furthest_occupied.min(Base::Second);
+            } else {
+                let runner_skill: f64 = self.all_players.get(&runner).unwrap().metrics.running.into();
+                let success_prob = runner_skill / (runner_skill + overall_difficulty);
+
+                let to_base = random_advancement_between(Base::Second, target_base, success_prob, &mut self.rng);
+                if second_forced {
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::Second,
+                        to_base,
+                    });
+                    furthest_occupied = to_base.unwrap_or(Base::Second);
+                } else if success_prob >= 0.5 {
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::Second,
+                        to_base,
+                    });
+                    furthest_occupied = to_base.unwrap_or(Base::Second);
                 } else {
-                    break;
+                    furthest_occupied = Base::Second;
                 }
             }
-            let to_base = if bases > 0 {
-                Some(Base::Second.plus(bases).unwrap())
-            } else {
-                None
-            };
-
-            runner_advancements.push(RunnerAdvancement {
-                name: runner,
-                from_base: Base::Second,
-                to_base,
-            });
         }
+
         if let Some(runner) = self.state.bases.first.clone() {
-            let runner_skill: f64 = self.all_players.get(&runner).unwrap().metrics.running.into();
-            let success_prob = runner_skill / (runner_skill + mean_fielder_skill);
-
-            let upper_bound = {
-                let min_advancement = runner_advancements.iter().min_by_key(|advancement| advancement.to_base);
-                match min_advancement {
-                    None => 3,
-                    Some(advancement) => match advancement.to_base {
-                        Some(Base::Home) => 3,
-                        Some(Base::Third) => 1,
-                        _ => 0,
-                    },
+            let target_base = furthest_occupied.prev().unwrap();
+            if target_base <= Base::First { // no room to advance
+                if first_forced { // force out
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::First,
+                        to_base: None,
+                    });
                 }
-            };
-            let mut bases = 0;
-            for _ in 0..=upper_bound {
-                if self.rng.random_bool(success_prob) {
-                    bases += 1;
+                furthest_occupied = furthest_occupied.min(Base::First);
+            } else {
+                let runner_skill: f64 = self.all_players.get(&runner).unwrap().metrics.running.into();
+                let success_prob = runner_skill / (runner_skill + overall_difficulty);
+
+                let to_base = random_advancement_between(Base::First, target_base, success_prob, &mut self.rng);
+                if first_forced {
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::First,
+                        to_base,
+                    });
+                    furthest_occupied = to_base.unwrap_or(Base::First);
+                } else if success_prob >= 0.5 {
+                    runner_advancements.push(RunnerAdvancement {
+                        name: runner,
+                        from_base: Base::First,
+                        to_base,
+                    });
+                    furthest_occupied = to_base.unwrap_or(Base::First);
                 } else {
-                    break;
+                    furthest_occupied = Base::First;
                 }
             }
-            let to_base = if bases > 0 {
-                Some(Base::First.plus(bases).unwrap())
-            } else {
-                None
-            };
+        }
 
+        // advance batter
+        let target_base = furthest_occupied.prev().unwrap();
+        let at_bat_outcome = if target_base < Base::First { // no room to advance, automatically out
             runner_advancements.push(RunnerAdvancement {
-                name: runner,
-                from_base: Base::First,
+                name: batter_name.clone(),
+                from_base: Base::Batting,
+                to_base: None,
+            });
+
+            AtBatOutcome::Out
+        } else {
+            let batter_skill: f64 = self.all_players.get(batter_name).unwrap().metrics.running.into();
+            let success_prob = batter_skill / (batter_skill + overall_difficulty);
+
+            let to_base = random_advancement_between(Base::Batting, target_base, success_prob, &mut self.rng);
+            runner_advancements.push(RunnerAdvancement {
+                name: batter_name.clone(),
+                from_base: Base::Batting,
                 to_base,
             });
-        }
 
-        // handle batter running
-        let batter_running_skill: f64 = self.all_players.get(batter_name).unwrap().metrics.running.into();
-        let batter_advance_prob = batter_running_skill / (batter_running_skill + mean_fielder_skill);
-
-        let upper_bound = {
-            let min_advancement = runner_advancements.iter().min_by_key(|advancement| advancement.to_base);
-            match min_advancement {
-                None => 4,
-                Some(advancement) => match advancement.to_base {
-                    Some(Base::Home) => 4,
-                    Some(Base::Third) => 2,
-                    Some(Base::Second) => 1,
-                    _ => 0,
-                },
+            match to_base {
+                None => AtBatOutcome::Out,
+                Some(Base::First) => AtBatOutcome::Single,
+                Some(Base::Second) => AtBatOutcome::Double,
+                Some(Base::Third) => AtBatOutcome::Triple,
+                Some(Base::Home) => AtBatOutcome::HomeRun,
+                Some(Base::Batting) => unreachable!(),
             }
-        };
-        let mut batter_bases = 0;
-        for _ in 0..=upper_bound {
-            if self.rng.random_bool(batter_advance_prob) {
-                batter_bases += 1;
-            } else {
-                break;
-            }
-        }
-        let to_base = if batter_bases > 0 {
-            Some(Base::Batting.plus(batter_bases).unwrap())
-        } else {
-            None
-        };
-        runner_advancements.push(RunnerAdvancement {
-            name: batter_name.clone(),
-            from_base: Base::Batting,
-            to_base,
-        });
-        let at_bat_outcome = match batter_bases {
-            0 => AtBatOutcome::Out,
-            1 => AtBatOutcome::Single,
-            2 => AtBatOutcome::Double,
-            3 => AtBatOutcome::Triple,
-            4 => AtBatOutcome::HomeRun,
-            _ => unreachable!(),
         };
 
         self.apply_runner_advancements(&mut runner_advancements);
@@ -575,6 +623,7 @@ impl BaseballGame {
         self.state.bases = Bases::empty();
         self.state.outs = 0;
         self.state.count = Count::empty();
+        self.state.last_inning_just_ended = true;
     }
 
     pub fn simulate_pitch(
@@ -588,6 +637,8 @@ impl BaseballGame {
         // 4. if the pitch is a hit, determine the fielding and running outcomes
         // 5. apply the outcomes to the game state
         // 6. return a summary of what has happened
+
+        self.state.last_inning_just_ended = false;
 
         let pitcher_name = if self.home_team_is_at_bat() {
             self.visiting_team.current_pitcher.clone()
