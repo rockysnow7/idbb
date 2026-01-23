@@ -23,7 +23,7 @@ impl Into<f64> for Level {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PlayerMetrics {
     hitting: Level,
     running: Level,
@@ -43,16 +43,17 @@ impl PlayerMetrics {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Player {
     pub name: String,
     pub metrics: PlayerMetrics,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Team {
     pub name: String,
     pub batting_order: [String; 9],
+    pub all_pitchers: Vec<String>,
     pub current_pitcher: String,
     pub fielders: [String; 8], // does not include the pitcher
     pub bullpen: Vec<String>,
@@ -60,8 +61,8 @@ pub struct Team {
 
 #[derive(Debug, Clone)]
 pub struct HalfInning {
-    number: u8,
-    top: bool,
+    pub number: u8,
+    pub top: bool,
 }
 
 impl HalfInning {
@@ -86,15 +87,23 @@ impl Bases {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Count {
-    balls: u8,
-    strikes: u8,
+    pub balls: u8,
+    pub strikes: u8,
 }
 
 impl Count {
     pub fn empty() -> Self {
         Self { balls: 0, strikes: 0 }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.balls == 0 && self.strikes == 0
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.balls == 3 && self.strikes == 2
     }
 }
 
@@ -265,12 +274,12 @@ pub struct GameStateSummary {
 
 #[derive(Debug)]
 pub struct EventsSummary {
-    pitch_location: StrikeZoneLocation,
-    batter_decision: BatterDecision,
-    batting_outcome: BattingOutcome,
-    at_bat_outcome: Option<AtBatOutcome>,
-    runner_advancements: Vec<RunnerAdvancement>,
-    game_outcome: GameOutcome,
+    pub pitch_location: StrikeZoneLocation,
+    pub batter_decision: BatterDecision,
+    pub batting_outcome: BattingOutcome,
+    pub at_bat_outcome: Option<AtBatOutcome>,
+    pub runner_advancements: Vec<RunnerAdvancement>,
+    pub game_outcome: GameOutcome,
 }
 
 fn random_advancement_between(from_base: Base, to_base: Base, success_prob: f64, rng: &mut ThreadRng) -> Option<Base> {
