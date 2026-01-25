@@ -76,14 +76,18 @@ impl HalfInning {
 
 #[derive(Debug, Clone)]
 pub struct Bases {
-    first: Option<String>,
-    second: Option<String>,
-    third: Option<String>,
+    pub first: Option<String>,
+    pub second: Option<String>,
+    pub third: Option<String>,
 }
 
 impl Bases {
-    pub fn empty() -> Self {
+    pub fn new_empty() -> Self {
         Self { first: None, second: None, third: None }
+    }
+
+    pub fn are_loaded(&self) -> bool {
+        self.first.is_some() && self.second.is_some() && self.third.is_some()
     }
 }
 
@@ -128,7 +132,7 @@ impl GameState {
             visiting_team_runs: 0,
             half_inning: HalfInning { number: 1, top: true },
             last_inning_just_ended: false,
-            bases: Bases::empty(),
+            bases: Bases::new_empty(),
             outs: 0,
             count: Count::empty(),
             game_outcome: GameOutcome::Ongoing,
@@ -189,7 +193,7 @@ pub enum Base {
 }
 
 impl Base {
-    fn next(&self) -> Option<Self> {
+    pub fn next(&self) -> Option<Self> {
         match self {
             Self::Batting => Some(Self::First),
             Self::First => Some(Self::Second),
@@ -199,7 +203,7 @@ impl Base {
         }
     }
 
-    fn prev(&self) -> Option<Self> {
+    pub fn prev(&self) -> Option<Self> {
         match self {
             Self::Batting => None,
             Self::First => Some(Self::Batting),
@@ -209,7 +213,7 @@ impl Base {
         }
     }
 
-    fn plus(&self, bases: u8) -> Option<Self> {
+    pub fn plus(&self, bases: u8) -> Option<Self> {
         if bases == 0 {
             Some(*self)
         } else {
@@ -217,7 +221,7 @@ impl Base {
         }
     }
 
-    fn minus(&self, bases: u8) -> Option<Self> {
+    pub fn minus(&self, bases: u8) -> Option<Self> {
         if bases == 0 {
             Some(*self)
         } else {
@@ -228,9 +232,9 @@ impl Base {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct RunnerAdvancement {
-    name: String,
-    from_base: Base,
-    to_base: Option<Base>, // if None, the runner is out
+    pub name: String,
+    pub from_base: Base,
+    pub to_base: Option<Base>, // if None, the runner is out
 }
 
 #[derive(Debug)]
@@ -260,7 +264,7 @@ pub enum GameOutcome {
     Ongoing,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GameStateSummary {
     pub home_team_runs: u8,
     pub visiting_team_runs: u8,
@@ -629,7 +633,7 @@ impl BaseballGame {
 
     fn cycle_half_inning(&mut self) {
         self.state.half_inning = self.state.half_inning.next();
-        self.state.bases = Bases::empty();
+        self.state.bases = Bases::new_empty();
         self.state.outs = 0;
         self.state.count = Count::empty();
         self.state.last_inning_just_ended = true;

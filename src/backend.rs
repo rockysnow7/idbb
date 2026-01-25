@@ -1,11 +1,11 @@
 use crate::baseball::{BaseballGame, BatterDecision, EventsSummary, GameOutcome, GameStateSummary, Player, PlayerMetrics, StrikeZoneLocation, Team};
-use crate::text::{describe_summaries, Granularity};
+use crate::text::{Granularity, TextEngine};
 use prompted::input;
 use rand::prelude::*;
 use std::collections::HashMap;
 
-const FIRST_NAMES: &str = include_str!("data/first_names.txt");
-const LAST_NAMES: &str = include_str!("data/last_names.txt");
+const FIRST_NAMES: &str = include_str!("data/names/first_names.txt");
+const LAST_NAMES: &str = include_str!("data/names/last_names.txt");
 
 fn get_first_names() -> Vec<&'static str> {
     FIRST_NAMES.lines().collect()
@@ -95,7 +95,10 @@ pub enum UserInput {
 #[derive(Debug)]
 enum GamePhase {
     PreGame,
-    InGame(BaseballGame),
+    InGame {
+        baseball_game: BaseballGame,
+        text_engine: TextEngine,
+    },
     BetweenGames,
 }
 
@@ -104,10 +107,12 @@ pub enum GameOutput {
     PitchOutput {
         events_summary: EventsSummary,
         new_game_state_summary: GameStateSummary,
+        description: String,
     },
-    InningOutput {
+    HalfInningOutput {
         events_summaries: Vec<EventsSummary>,
         game_state_summaries: Vec<GameStateSummary>,
+        description: String,
     },
     StartNewGame,
 }
@@ -170,15 +175,20 @@ impl Game {
         let baseball_game = BaseballGame::new(
             self.all_players.clone(),
             self.own_team.as_ref().unwrap().clone(),
-            visiting_team,
+            visiting_team.clone(),
         );
-        self.phase = GamePhase::InGame(baseball_game);
+        let text_engine = TextEngine::new(
+            self.all_players.clone(),
+            self.own_team.as_ref().unwrap().name.clone(),
+            visiting_team.name,
+        );
+        self.phase = GamePhase::InGame { baseball_game, text_engine };
     }
 
     pub fn valid_user_inputs(&self) -> Vec<UserInput> {
         match &self.phase {
             GamePhase::PreGame => vec![UserInput::StartNewGame],
-            GamePhase::InGame(current_game) => {
+            GamePhase::InGame { baseball_game: current_game, .. } => {
                 let game_state_summary = current_game.state_summary();
                 let granularity = Granularity::from_state_summary(&game_state_summary);
 
@@ -191,7 +201,7 @@ impl Game {
                             vec![UserInput::PitchAim(StrikeZoneLocation::In), UserInput::PitchAim(StrikeZoneLocation::Out)]
                         }
                     }
-                    Granularity::Inning => vec![UserInput::PlayAggressive, UserInput::PlayWithheld],
+                    Granularity::HalfInning => vec![UserInput::PlayAggressive, UserInput::PlayWithheld],
                 }
             },
             GamePhase::BetweenGames => todo!(),
@@ -201,13 +211,15 @@ impl Game {
     pub fn process_user_input(&mut self, user_input: &UserInput) -> Result<GameOutput, GameError> {
         match &mut self.phase {
             GamePhase::PreGame => {
-                let UserInput::StartNewGame = user_input else { unreachable!() };
+                let UserInput::StartNewGame = user_input else {
+                    return Err(GameError::InvalidUserInput);
+                };
 
                 self.start_new_game();
 
                 Ok(GameOutput::StartNewGame)
             },
-            GamePhase::InGame(current_game) => {
+            GamePhase::InGame { baseball_game: current_game, text_engine } => {
                 let game_state_summary = current_game.state_summary();
                 let granularity = Granularity::from_state_summary(&game_state_summary);
                 let home_team_is_at_bat = current_game.home_team_is_at_bat();
@@ -216,23 +228,35 @@ impl Game {
                     (Granularity::Pitch, UserInput::BatterDecision(decision), true) => {
                         let events_summary = current_game.simulate_pitch(None, Some(*decision));
                         let new_game_state_summary = current_game.state_summary();
+                        let description = text_engine.describe_pitch_level_summaries(
+                            &game_state_summary,
+                            &events_summary,
+                            &new_game_state_summary,
+                        );
 
                         GameOutput::PitchOutput {
                             events_summary,
                             new_game_state_summary,
+                            description,
                         }
                     },
                     (Granularity::Pitch, UserInput::PitchAim(location), false) => {
                         let events_summary = current_game.simulate_pitch(Some(*location), None);
                         let new_game_state_summary = current_game.state_summary();
+                        let description = text_engine.describe_pitch_level_summaries(
+                            &game_state_summary,
+                            &events_summary,
+                            &new_game_state_summary,
+                        );
 
                         GameOutput::PitchOutput {
                             events_summary,
                             new_game_state_summary,
+                            description,
                         }
                     },
-                    (Granularity::Inning, UserInput::PlayAggressive, _) => {
-                        let current_inning = game_state_summary.half_inning.number;
+                    (Granularity::HalfInning, UserInput::PlayAggressive, _) => {
+                        let current_half = game_state_summary.half_inning.top;
                         let mut events_summaries = Vec::new();
                         let mut game_state_summaries = Vec::new();
                         loop {
@@ -245,17 +269,23 @@ impl Game {
                             events_summaries.push(events_summary);
                             let game_state_summary = current_game.state_summary();
                             game_state_summaries.push(game_state_summary);
-                            if game_state_summaries.last().unwrap().half_inning.number != current_inning {
+                            if game_state_summaries.last().unwrap().half_inning.top != current_half {
                                 break;
                             }
                         }
+                        let description = text_engine.describe_half_inning_summaries(
+                            &game_state_summary,
+                            &events_summaries,
+                            &game_state_summaries,
+                        );
 
-                        GameOutput::InningOutput {
+                        GameOutput::HalfInningOutput {
                             events_summaries,
                             game_state_summaries,
+                            description,
                         }
                     },
-                    (Granularity::Inning, UserInput::PlayWithheld, _) => todo!(),
+                    (Granularity::HalfInning, UserInput::PlayWithheld, _) => todo!(),
                     _ => return Err(GameError::InvalidUserInput),
                 };
 

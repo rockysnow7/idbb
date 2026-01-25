@@ -1,0 +1,8 @@
+PITCH:
+    NO OUTCOME:
+        - Cole pitching to Vladimir Guerrero Jr. A swing and a miss, it's 0 for 1.
+        - (<pitcher> pitching to <batter>)?. <pitch description>. <count>?.
+        
+    WITH OUTCOME:
+        - Now that's a fastball a little further in than Cole would like, and Vlad gets it. Line drive to left field and he's off.
+        - 
