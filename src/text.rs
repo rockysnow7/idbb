@@ -175,9 +175,18 @@ impl TextEngine {
         sentences.push(sentence);
     }
 
-    fn describe_runner_advancements(&self, runner_advancements: &Vec<RunnerAdvancement>, sentences: &mut Vec<String>) {
+    fn describe_runner_advancements(
+        &self,
+        runner_advancements: &Vec<RunnerAdvancement>,
+        sentences: &mut Vec<String>,
+        skip_batter: bool,
+    ) {
         let mut runner_parts = Vec::new();
         for runner_advancement in runner_advancements.iter() {
+            if skip_batter && runner_advancement.from_base == Base::Batting {
+                continue;
+            }
+
             let part = match runner_advancement.to_base {
                 Some(Base::First) => format!("{} to first", runner_advancement.name),
                 Some(Base::Second) => format!("{} to second", runner_advancement.name),
@@ -217,7 +226,9 @@ impl TextEngine {
         };
         sentences.push(hit_sentence);
 
-        self.describe_runner_advancements(&events_summary.runner_advancements, sentences);
+        if events_summary.runner_advancements.len() > 1 {
+            self.describe_runner_advancements(&events_summary.runner_advancements, sentences, true);
+        }
     }
 
     fn describe_home_run(
@@ -227,9 +238,15 @@ impl TextEngine {
         new_game_state_summary: &GameStateSummary,
         sentences: &mut Vec<String>,
     ) {
-        sentences.push("Home run!".to_string());
-
-        self.describe_runner_advancements(&events_summary.runner_advancements, sentences);
+        if events_summary.runner_advancements.len() == 1 {
+            sentences.push("Home run!".to_string());
+        } else if events_summary.runner_advancements.len() == 4 {
+            sentences.push("Grand slam home run!".to_string());
+        } else {
+            let num_runs = events_summary.runner_advancements.len();
+            let team_name = if prev_game_state_summary.half_inning.top { &self.home_team_name } else { &self.visiting_team_name };
+            sentences.push(format!("Home run! And {} brings in {num_runs} runs for the {team_name}.", prev_game_state_summary.batter));
+        }
     }
 
     fn describe_batter_out(
@@ -242,7 +259,9 @@ impl TextEngine {
         let sentence = format!("He hits a ground ball to the left, and... he'll be out at first base.");
         sentences.push(sentence);
 
-        self.describe_runner_advancements(&events_summary.runner_advancements, sentences);
+        if events_summary.runner_advancements.len() > 1 {
+            self.describe_runner_advancements(&events_summary.runner_advancements, sentences, true);
+        }
     }
 
     fn describe_pitch_with_at_bat_outcome(
