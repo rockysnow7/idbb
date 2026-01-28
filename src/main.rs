@@ -18,8 +18,17 @@ fn main() {
         let user_input = input!("Enter your choice: ").parse::<usize>().unwrap();
         let choice = &valid_user_inputs[user_input];
 
-        let Ok(GameOutput::PitchOutput { description, .. }) = game.process_user_input(choice) else { unreachable!() };
-        // println!("Game output: {game_output:#?}");
-        println!("\n{description}\n");
+        // let description = match game.process_user_input(choice).unwrap() {
+        //     GameOutput::PitchOutput { description, .. } => description,
+        //     GameOutput::HalfInningOutput { description, .. } => description,
+        //     GameOutput::StartNewGame => {
+        //         println!("Starting new game...");
+        //         continue;
+        //     }
+        // };
+        // println!("\n{description}\n");
+
+        let game_output = game.process_user_input(choice).unwrap();
+        println!("{game_output:#?}");
     }
 }

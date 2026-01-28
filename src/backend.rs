@@ -88,8 +88,7 @@ pub enum UserInput {
     BatterDecision(BatterDecision),
 
     // inning-level inputs
-    PlayAggressive,
-    PlayWithheld,
+    ContinuePlay,
 }
 
 #[derive(Debug)]
@@ -201,7 +200,7 @@ impl Game {
                             vec![UserInput::PitchAim(StrikeZoneLocation::In), UserInput::PitchAim(StrikeZoneLocation::Out)]
                         }
                     }
-                    Granularity::HalfInning => vec![UserInput::PlayAggressive, UserInput::PlayWithheld],
+                    Granularity::HalfInning => vec![UserInput::ContinuePlay],
                 }
             },
             GamePhase::BetweenGames => todo!(),
@@ -255,17 +254,12 @@ impl Game {
                             description,
                         }
                     },
-                    (Granularity::HalfInning, UserInput::PlayAggressive, _) => {
+                    (Granularity::HalfInning, UserInput::ContinuePlay, _) => {
                         let current_half = game_state_summary.half_inning.top;
                         let mut events_summaries = Vec::new();
                         let mut game_state_summaries = Vec::new();
                         loop {
-                            let (pitch_location, batter_decision) = if current_game.home_team_is_at_bat() {
-                                (None, Some(BatterDecision::Swing))
-                            } else {
-                                (Some(StrikeZoneLocation::In), None)
-                            };
-                            let events_summary = current_game.simulate_pitch(pitch_location, batter_decision);
+                            let events_summary = current_game.simulate_pitch(None, None);
                             events_summaries.push(events_summary);
                             let game_state_summary = current_game.state_summary();
                             game_state_summaries.push(game_state_summary);
@@ -285,7 +279,6 @@ impl Game {
                             description,
                         }
                     },
-                    (Granularity::HalfInning, UserInput::PlayWithheld, _) => todo!(),
                     _ => return Err(GameError::InvalidUserInput),
                 };
 

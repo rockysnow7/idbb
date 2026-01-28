@@ -19,14 +19,13 @@ impl Granularity {
     }
 
     pub fn from_state_summary(state_summary: &GameStateSummary) -> Self {
-        // let tension = Self::calculate_tension(state_summary);
+        let tension = Self::calculate_tension(state_summary);
 
-        // if tension > 3 {
-        //     Self::HalfInning
-        // } else {
-        //     Self::Pitch
-        // }
-        Self::Pitch
+        if tension > 3 {
+            Self::HalfInning
+        } else {
+            Self::Pitch
+        }
     }
 }
 
@@ -244,7 +243,7 @@ impl TextEngine {
             sentences.push("Grand slam home run!".to_string());
         } else {
             let num_runs = events_summary.runner_advancements.len();
-            let team_name = if prev_game_state_summary.half_inning.top { &self.home_team_name } else { &self.visiting_team_name };
+            let team_name = if prev_game_state_summary.half_inning.top { &self.visiting_team_name } else { &self.home_team_name };
             sentences.push(format!("Home run! And {} brings in {num_runs} runs for the {team_name}.", prev_game_state_summary.batter));
         }
     }
